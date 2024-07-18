@@ -1,7 +1,9 @@
 package cn.asone.endless.utils.pathfinding
 
 import cn.asone.endless.utils.BlockUtils
+import cn.asone.endless.utils.extensions.getBlock
 import net.minecraft.block.BlockLiquid
+import net.minecraft.block.BlockSlab
 import net.minecraft.util.BlockPos
 import net.minecraft.util.Vec3
 import net.minecraft.util.Vec3i
@@ -47,6 +49,7 @@ class AStarPathFinder(val startPos: BlockPos, val endPos: BlockPos, val maxDista
     var maxFallDistance = 1
 
     fun calculatePath(): ArrayList<BlockPos> {
+        nodes.clear()
         queue.add(Node(startPos, 0.0, null))
         visited.add(startPos)
         while (queue.isNotEmpty()) {
@@ -99,9 +102,9 @@ class AStarPathFinder(val startPos: BlockPos, val endPos: BlockPos, val maxDista
                     continue
                 }
                 // 目标位置脚下的方块
-                val targetBlock = mc.theWorld.getBlockState(targetPos.add(0, -1, 0)).block
+                val targetBlock = mc.theWorld.getBlock(targetPos.add(0, -1, 0))
                 // 当前位置脚下的方块
-                val currentBlock = mc.theWorld.getBlockState(currentNode.pos.add(0, -1, 0)).block
+                val currentBlock = mc.theWorld.getBlock(currentNode.pos.add(0, -1, 0))
                 // 计算高度差
                 val diffY =
                     targetBlock.blockBoundsMaxY - currentBlock.blockBoundsMaxY
@@ -123,7 +126,6 @@ class AStarPathFinder(val startPos: BlockPos, val endPos: BlockPos, val maxDista
             currentNode = currentNode.cameFrom
         }
         results.reverse()
-        nodes.clear()
         queue.clear()
         visited.clear()
         return results
@@ -134,17 +136,28 @@ class AStarPathFinder(val startPos: BlockPos, val endPos: BlockPos, val maxDista
     }
 
     private fun checkPositionValidity(x: Int, y: Int, z: Int, checkGround: Boolean): Boolean {
-        if (avoidLiquid
-            && (mc.theWorld.getBlock(x, y, z) is BlockLiquid
-                    || mc.theWorld.getBlock(x, y + 1, z) is BlockLiquid)
-        )
-            return false
+        val block1 = mc.theWorld.getBlock(x, y, z)
+        val block2 = mc.theWorld.getBlock(x, y + 1, z)
+        val block3 = mc.theWorld.getBlock(x, y - 1, z)
+        if (avoidLiquid) {
+            if ((block1 is BlockLiquid || block2 is BlockLiquid))
+                return false
+        }
+        if (block2 is BlockSlab && block3 is BlockSlab && !block2.isDouble && !block3.isDouble) {
+            if (mc.theWorld.getBlockState(BlockPos(x, y + 1, z)).getValue(BlockSlab.HALF) == BlockSlab.EnumBlockHalf.TOP
+                && mc.theWorld.getBlockState(BlockPos(x, y - 1, z))
+                    .getValue(BlockSlab.HALF) == BlockSlab.EnumBlockHalf.BOTTOM
+            )
+                return true
+        }
 
-        return !BlockUtils.isBlockSolid(x, y, z)
-                && (!BlockUtils.isBlockSolid(x, y + 1, z)
-                || (mc.theWorld.getBlock(x, y + 1, z).blockBoundsMinY - mc.theWorld.getBlock(x,y - 1,z).blockBoundsMaxY) > mc.thePlayer.height //头顶的方块和脚下的方块之间的距离够玩家通过
+        return !BlockUtils.isBlockSolid(block1)
+                && (!BlockUtils.isBlockSolid(block2)
+                || (block2.blockBoundsMinY //上部的方块
+                + 1 //下部的方块
+                + 1 - block3.blockBoundsMaxY)/* 脚里的方块 */ >= mc.thePlayer.height //头顶的方块和脚下的方块之间的距离够玩家通过
                 ) //上面两格能走过去
-                && (BlockUtils.isBlockSolid(x, y - 1, z) || !checkGround)
-                && BlockUtils.isSafeToWalkOn(x, y - 1, z)
+                && (BlockUtils.isBlockSolid(block3) || !checkGround)
+                && BlockUtils.isSafeToWalkOn(block3)
     }
 }
